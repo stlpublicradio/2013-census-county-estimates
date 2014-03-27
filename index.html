@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+	<title>St. Louis census 2013</title>	
+
+	<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+	
+	<script src="http://d3js.org/topojson.v1.min.js"></script>
+	
+	<link href='https://api.tiles.mapbox.com/mapbox.js/v1.6.2/mapbox.css' rel='stylesheet' />
+	
+	<script src="leaflet-0.7.2/leaflet.js" type="text/javascript"></script>
+	
+	<script src='https://api.tiles.mapbox.com/mapbox.js/v1.6.2/mapbox.js'></script>
+	
+
+</head>
+<body>
+<style type="text/css">
+html,
+body,
+#map {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.info {
+	padding: 6px 8px;
+	font: 14px/16px Arial, Helvetica, sans-serif;
+	background: white;
+	background: rgba(255,255,255,0.8);
+	box-shadow: 0 0 15px rgba(0,0,0,0.2);
+	border-radius: 5px;
+	max-width: 500px;
+}
+.info h4 {
+	margin: 0 0 5px;
+	color: #777;
+}
+
+.legend {
+	text-align: left;
+	line-height: 18px;
+	color: #555;
+}
+.legend i {
+	min-width: 20px;
+	max-width: 20%;
+	height: 18px;
+	float: left;
+	margin-right: 8px;
+	opacity: 0.7;
+}
+
+</style>
+
+<div id="map"></div>
+
+<script type="text/javascript" src="stlmsa.js"></script>
+
+<script type="text/javascript">
+
+var northEast = L.latLng(39.737, -88.142),
+    southWest = L.latLng(36.266, -93.185),
+    bounds = L.latLngBounds(southWest, northEast);
+
+var map = L.map('map', {scrollWheelZoom: false, attribution: ''}).setView([38.497, -90.155], 8).setMaxBounds(bounds);
+
+ var tiles = L.mapbox.tileLayer('stlpr.hi06d4b5')
+    .addTo(map);
+    
+var info = L.control();
+
+var percent = d3.format('.2g');
+
+var people = d3.format(',g');
+
+var getOrdinal = function(n) {
+   var s=["th","st","nd","rd"],
+       v=n%100;
+   return n+(s[(v-20)%10]||s[v]||s[0]);
+};
+
+info.onAdd = function (map) {
+	this._div = L.DomUtil.create('div', 'info');
+	this.update();
+	return this._div;
+};
+
+
+info.update = function (props) {
+	this._div.innerHTML = '<h4>2013 Census Estimates</h4>' +  (props ?
+		'<b>' + props.stlmsa_county + ', ' + props.stlmsa_state + '\'s</b> population ' + (props.stlmsa_pop_chg > 0 ? 'grew by an estimated ' : 'fell by an estimated ') + people(Math.abs(props.stlmsa_pop_chg)) + ' people between 2012 and 2013, from ' + people(props.stlmsa_2012_pop) + ' to ' + people(props.stlmsa_2013_pop) + '.</br></br>That\'s a ' + (props.stlmsa_pct_2012_2013 > 0 ? 'growth of ' : 'loss of ') + percent(Math.abs(props.stlmsa_pct_2012_2013)) + '%, the ' + (props.stlmsa_pct_2012_2013 > 0 ? getOrdinal(props.stlmsa_pct_state_rank) + ' highest growth rate' : (props.STATEFP == 17 ? getOrdinal(102 - props.stlmsa_pct_state_rank) : getOrdinal(115 - props.stlmsa_pct_state_rank)) + ' highest rate of loss')+ ' in ' + props.stlmsa_state + ' (out of ' + (props.STATEFP == 17 ? '102' : '115') + ').' : 'Hover over a county');
+};
+
+info.addTo(map);
+    
+function getColor(d) {
+	return d > 1  ? '#2c7bb6' :
+	       d > .5  ? '#abd9e9' :
+	       d > 0  ? '#ffffbf' :
+	       d > -.5   ? '#fdae61' :
+	       d > -1 ? '#d7191c' :
+	                 '#000000';
+}
+    
+function style(feature) {
+	return {
+		weight: 1,
+		opacity: .6,
+		color: '#eee',
+		fillOpacity: 0.6,
+		fillColor: getColor(feature.properties.stlmsa_pct_2012_2013)
+		};
+		}
+		
+		function highlightFeature(e) {
+			var layer = e.target;
+
+			layer.setStyle({
+				weight: 5,
+				color: '#666',
+				dashArray: '',
+				fillOpacity: 0.7
+			});
+
+			if (!L.Browser.ie && !L.Browser.opera) {
+				layer.bringToFront();
+			}
+
+			info.update(layer.feature.properties);
+		}
+
+		var geojson;
+
+		function resetHighlight(e) {
+			geojson.resetStyle(e.target);
+			info.update();
+		}
+
+		function zoomToFeature(e) {
+			map.fitBounds(e.target.getBounds());
+		}
+
+		function onEachFeature(feature, layer) {
+			layer.on({
+				mouseover: highlightFeature,
+				mouseout: resetHighlight,
+				click: highlightFeature
+			});
+		}		
+
+var geojson;
+
+geojson = L.geoJson(data, {
+	style: style,
+	onEachFeature: onEachFeature
+}).addTo(map);
+
+var legend = L.control({position: 'bottomright'});
+
+legend.onAdd = function (map) {
+
+	var div = L.DomUtil.create('div', 'info legend'),
+		grades = [-1,-.5, 0, .5, 1],
+		labels = [],
+		from, to;
+
+	for (var i = 0; i < grades.length; i++) {
+		from = grades[i];
+		to = grades[i + 1];
+
+		labels.push(
+			'<i style="background:' + getColor(grades[i] + .1) + '"></i> ' +
+			((from == -1) ? 'Lost more than ' + Math.abs(to) + '%' : to == 0 ? 'Lost less than ' + Math.abs(from) + '%' : to == .5 ? 'Gained less than ' + to + '%' : to == 1 ? 'Gained between ' + from + '% and ' + to + '%' : 'Gained more than ' + from + '%'));
+	}
+
+	div.innerHTML = labels.join('<br>');
+	return div;
+};
+
+legend.addTo(map);
+
+</script>
+</body>
+</html>
